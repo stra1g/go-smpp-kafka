@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -11,6 +12,21 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/segmentio/kafka-go"
 )
+
+type Sender struct {
+	ID string `json:"id"`
+}
+
+type Message struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+	Number  int    `json:"number"`
+}
+
+type NewMessageEvent struct {
+	Sender  Sender  `json:"sender"`
+	Message Message `json:"message"`
+}
 
 func main() {
 	err := godotenv.Load()
@@ -41,6 +57,8 @@ func consumeKafkaMessages(done chan bool) {
 	brokers := os.Getenv("KAFKA_BROKERS")
 	topic := os.Getenv("KAFKA_TOPIC")
 	groupID := os.Getenv("KAFKA_GROUP_ID")
+	writerBrokers := os.Getenv("KAFKA_WRITER_BROKERS")
+	writerTopic := os.Getenv("KAFKA_WRITER_TOPIC")
 
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        []string{brokers},
@@ -50,6 +68,13 @@ func consumeKafkaMessages(done chan bool) {
 	})
 	defer r.Close()
 
+	w := &kafka.Writer{
+		Addr:     kafka.TCP(writerBrokers),
+		Topic:    writerTopic,
+		Balancer: &kafka.LeastBytes{},
+	}
+	defer w.Close()
+
 	for {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
@@ -57,13 +82,39 @@ func consumeKafkaMessages(done chan bool) {
 			continue
 		}
 
-		processMessage(string(m.Value))
+		processMessage(string(m.Value), w)
 	}
-	// done <- true
 }
 
-func processMessage(message string) {
+func processMessage(message string, w *kafka.Writer) {
 	log.Println("Processing SMPP message:", message)
+
+	var newMessageEvent NewMessageEvent
+	err := json.Unmarshal([]byte(message), &newMessageEvent)
+	if err != nil {
+		log.Println("Error unmarshalling message:", err)
+		return
+	}
+
+	broadcastMessage(w, newMessageEvent)
+}
+
+func broadcastMessage(w *kafka.Writer, event NewMessageEvent) {
+	bytes, err := json.Marshal(event)
+	if err != nil {
+		log.Println("Error marshalling message for broadcast:", err)
+		return
+	}
+
+	err = w.WriteMessages(context.Background(),
+		kafka.Message{
+			Key:   []byte(event.Message.ID),
+			Value: bytes,
+		},
+	)
+	if err != nil {
+		log.Println("Error broadcasting message:", err)
+	}
 }
 
 func startSMPPServer() {
