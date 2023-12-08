@@ -20,12 +20,17 @@ type Sender struct {
 type Message struct {
 	ID      string `json:"id"`
 	Content string `json:"content"`
-	Number  int    `json:"number"`
+	Number  string `json:"number"`
+}
+
+type Chat struct {
+	ID string `json:"id"`
 }
 
 type NewMessageEvent struct {
 	Sender  Sender  `json:"sender"`
 	Message Message `json:"message"`
+	Chat    Chat    `json:"chat"`
 }
 
 func main() {
@@ -69,9 +74,10 @@ func consumeKafkaMessages(done chan bool) {
 	defer r.Close()
 
 	w := &kafka.Writer{
-		Addr:     kafka.TCP(writerBrokers),
-		Topic:    writerTopic,
-		Balancer: &kafka.LeastBytes{},
+		Addr:                   kafka.TCP(writerBrokers),
+		Topic:                  writerTopic,
+		Balancer:               &kafka.LeastBytes{},
+		AllowAutoTopicCreation: true,
 	}
 	defer w.Close()
 
