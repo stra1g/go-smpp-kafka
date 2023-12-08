@@ -23,16 +23,16 @@
 
 - Go (1.5 or later)
 - Kafka cluster
-- .env file with necessary configurations
+- .env file with necessary configurations (change the kafka host port to yours)
 
 # Setup
 
 ```
-$ cp .env.example .env
+cp .env.example .env
 ```
 
 ## Running
 
 ```bash
-$ go run main.go
+go run main.go
 ```
